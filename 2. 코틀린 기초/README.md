@@ -1,11 +1,5 @@
 # 2장. 코틀린 기초
 
--  
-
-<br>
-
----
-
 ## 2.1 기본 요소: 함수와 변수
 
 ### 2.1.1 프로그램 진입점
@@ -189,17 +183,82 @@ println("Hi, ${if (name.isBlank()) "someone" else name}!")
 
 ## 2.2 행동과 데이터 캡슐화: 클래스와 프로퍼티
 
+#### POJO Class 
+
+```java
+public class Person {
+    private final String name;
+
+    public Person(String name) {
+        this.name = name;
+    }
+
+    public String getName() {
+        return name;
+    }
+}
+```
+
+#### Kotlin Class
+
+```kotlin
+class Person(val name: String)
+```
+
+- 코틀린은 간결한 클래스 정의가 가능
+    - 코드 없이 데이터만 저장하는 클래스
+- 코틀린의 기본 가시성은 public, 생략 가능
+
 ### 2.2.1 프로퍼티
 
 > 클래스와 데이터를 연관시키고 접근 가능하게 만든다
 
-### 2.2.2 커스텀 접근자
+```kotlin
+class Person {
+    val name: String, // 읽기 전용, 비공개 필드와 공개 getter 생성
+    var isStudent: Boolean // 변경 가능, 비공개 필드와 공개 getter, 공개 setter 생성
+}
+
+- 코틀린은 자바의 비공개 필드 및 getter, setter로 이루어진 **프로퍼티**를 기본 기능으로 제공한다.
+- 코틀린의 네이밍: is로 시작하는 프로퍼티의 getter는 get이 붙지 않고 원래 이름을 사용, setter는 is를 set으로 바꾼 이름을 사용한다.
+- new 키워드를 사용하지 않고 생성자를 호출한다.
+- 프로퍼티 이름을 직접 사용해도 자동으로 getter/setter를 호출한다.
+
+> 코틀린의 네이밍 방식이 행위를 분명하게 나타내는가? 써봐야 알 것 같다.
+
+### 2.2.2 커스텀 접근자(getter) 📌
 
 > 프로퍼티 값을 저장하지 않고 계산
+
+```kotlin
+class Rectangle(val height: Int, val width: Int) {
+    val isSquare: Boolean
+        get() { // 프로퍼티 게터 선언
+            return height == width)
+        }
+}
+```
+
+직사각형 클래스에서 높이와 너비를 저장할 때, 둘이 같으면 true를 돌려주는 `isSquare` 프로퍼티를 필드에 저장하지 않고도 제공할 수 있다. 이를 on the go property라고 하며, 커스텀 getter를 사용해 제공할 수 있다.
+
+> 커스텀 getter는, 자바에서처럼 파라미터가 없는 함수를 정의하는 것과 성능 차이는 없다.  
+> 일반적으로 클래스의 특성을 기술하고 싶다면 프로퍼티로, 행동을 기술하고 싶다면 멤버 함수를 고르면 된다.
 
 ### 2.2.3 디렉터리와 패키지
 
 > 코틀린의 소스코드 구조에 대해 알아보자
+
+#### 패키지
+
+- 패키지 문이 있는 파일에 들어있는 모든 선언은 해당 패키지에 들어간다.
+- 코틀린은 클래스 임포트와 함수 임포트를 구분하지 않는다.
+- 코틀린은 여러 클래스를 같은 파일에 넣을 수 있고, 이름도 자유롭다. 디렉터리와 소스코드 파일의 위치도 관계없다.
+    - 자바에서는 디렉터리 구조에 의존하는 패키지 구조, 클래스명을 따라가는 파일명
+
+<br>
+
+- **하지만 대부분의 경우 자바처럼 패키지별로 디렉터리를 구성하는 편이 낫다!** (호환성도 무시 못함)
+- 그렇지만 여러 클래스를 한 파일에 넣는 것을 주저하지 말자.
 
 <br>
 
