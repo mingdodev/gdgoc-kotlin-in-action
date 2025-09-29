@@ -43,6 +43,7 @@ list.reduce { acc, element ->
 val (even, odd) = listOf(1, 2, 3, 4, 5).partition { it % 2 == 0 }
 // Pair를 반환
 ```
+- 2개로 분할 (조건 참, 거짓)
 
 ### groupBy
 
