@@ -210,3 +210,7 @@ fun main() {
 | **with**  | `this` (인자로 객체 전달) | 람다 결과     | **여러 프로퍼티 접근 시 간결화**          | `with(address) { println(streetAddress); "$city, $country" }` |
 | **apply** | `this`             | **객체 자신** | **빌더 패턴, 초기화**                | `val p = Person().apply { name="Kim"; age=20 }`               |
 | **also**  | `it`               | **객체 자신** | **사이드 이펙트 (logging, 디버깅)**    | `user.also { println("created $it") }`                        |
+
+- 스코프 함수 또는 영역 함수
+- 이 함수들은 코드 블록을 어떤 객체의 맥락에서 실행해준다.
+- 람다 안에서 대상 객체를 어떻게 접근하는지와 반환값이 무엇인지에 따라 구분된다.

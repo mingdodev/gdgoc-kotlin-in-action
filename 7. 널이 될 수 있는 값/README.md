@@ -206,11 +206,120 @@ class CopyRowAction(val list: SelectableTextList) {
 
 ## let 함수
 
+```kotlin
+fun sendEmailTo(email: String) { /*...*/ }
+fun main() {
+    val email: String? = "foo@bar.com"
+    email?.let { sendEmailTo(it) }
+}
+```
+- let 함수를 **안전한 호출 연산자**와 함께 사용하면, 널이 될 수 없는 인자만 받는 함수에 널이 될 수 있는 값을 넘길 수 있다.
+- let 함수는 자신의 수신 객체를 인자로 전달받은 람다에 넘긴다. 이때 수신 객체(`email`)가 널이면 아무일도 일어나지 않고, 널이 아닐 때만 전달 받은 람다를 실행한다.
+
+> 인스턴스가 널이면 호출이 불가능한 메서드와 다르게, 널이 될 수 있는 타입의 값에 대해 안전한 호출을 사용하지 않고 let을 사용하면 람다의 인자는 널이 될 수 있는 타입으로 추론된다!
+
+<br>
+
+- 아주 긴 식이 있고 그 값이 널이 아닐 때 수행해야 하는 로직이 있을 때 사용하면 굿
+- 여러 값을 검사할 때는 let 호출을 내포시켜 처리할 수 있지만, 가독성 측면에서 좋지 않을 수 있음
+
+> with, apply, let, run, also 모두 스코프 함수
+
 ## 지연 초기화 프로퍼티
 
-## 널이 될 수 있는 타입에 대한 확장
+- 코틀린에서는 일반적으로 생성자에서 모든 프로퍼티를 초기화해야 한다.
+- 프로퍼티 타입이 널이 될 수 없다면 반드시 널이 아닌 값으로 그 프로퍼티를 초기화해야 한다.
+    - 그러나 생성자에서 초기화하지 못하는 경우도 있다. 이에 프로퍼티를 널 가능으로 선언하면 널 검사 및 단언문으로 코드가 더러워진다.
+
+이 문제를 해결하기 위해 코틀린은 **지연 초기화(late-initialize)**를 제공한다.
+
+```kotlin
+/* 클래스 생성자에서 초기화하지 않고 JUnit의 @BeforeAll에서 초기화하는 예시 */
+class MyService {
+    fun performAction(): String = "Action Done"
+}
+
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class MyTest {
+    // 코틀린에서 널이 될 수 없는 타입의 멤버 변수는 반드시 선언과 동시에 초기화되어야 함
+    private lateinit var myService: MyService // 초기화하지 않고 널이 아닌 프로퍼티를 선언
+
+    @BeforeAll fun setUp() {
+        myService = MyService() // 별도의 널 검사 없이 프로퍼티 사용
+    }
+
+    @Test fun testAction() {
+        assertEquals("Action Done", myService.performAction())
+    }
+}
+```
+- 생성자 밖에서 값을 바꿔야하므로 지연 초기화 프로퍼티는 항상 var여야 한다.
+- 프로퍼티 초기화 전에 접근하면 `NPE`가 아닌 `UninitialiedPropertyAccessException`이 발생한다.
+
+<br>
+
+**cf. 스프링 DI 중 필드 주입**
+
+```kotlin
+@Service
+class MyService {
+    @Autowired
+    private lateinit var myController: MyController
+    
+    fun someLogic() {
+        myController.doWork() 
+    }
+}
+```
+- 그치만 주로 생성자 주입으로 불변성을 유지할 것이니~
+
+## 널이 될 수 있는 타입에 대한 확장 함수 정의
+
+- 메서드 호출 전 수신 객체 역할을 하는 변수가 널이 아니라고 보장하는 대신, 메서드 호출이 널을 수신 객체로 받고 내부에서 널을 처리하게 할 수 있다.
+- 널이 될 수 있는 타입의 확장함수는 자신의 수신 객체가 널일 때 어떻게 해야 하는지 스스로 알고 있기 때문에, 안전한 호출 없이도 호출 가능하다.
+
+> 확장 함수가 내부적으로 정적 함수처럼 처리되어 객체(인스턴스)를 통한 디스패치에 의존하지 않고, null이 그대로 함수에 인자로 전달될 수 있기 때문. 일반 객체는 디스패치를 통해 메서드를 호출할 때 널 검사를 안 하니까, 수신 객체가 null이면 NPE 발생.
+
+```kotlin
+fun String?.isNullOrBlank(): Boolean =
+    this == null || this.isBlank() // isBlank는 널이 아닌 값에 대해서만 호출될 수 있음. 스마트 캐스트로 호출가능한 것
+```
+- 자바는 메서드 안의 this가 무조건 널이 아니지만, 코틀린에서는 널이 될 수 있는 타입의 확장 함수 안에서는 this가 널이 될 수도 있다는 점에 유의!
+
+> 확장함수를 작성할 때 널이 될 수 있는 타입에 대해 정의할지 고민된다면, 일단 처음에는 널이 될 수 없는 타입에 대해 정의하라. 추후 필요할 때 안전하게 바꿀 수 있으므로~
 
 ## 타입 파라미터의 널 가능성
+
+> 물음표가 붙어있지 않은 타입 파라미터가 널이 될 수 있는 타입일 수도 있다?!
+
+- 함수나 클래스의 모든 타입 파라미터는 기본적으로 널이 될 수 있다.
+- 타입 파라미터 T를 타입 이름으로 사용하면 물음표 없이도 널이 될 수 있는 타입이다.
+    - 널이 될 수 있는 타입을 표시하려면 반드시 물음표를 타입 이름 뒤에 붙여야 한다는 규칙의 유일한 예외
+
+```kotlin
+fun <T> printHashCode(t: T) {
+    println(t?.hashCode()) // 안전 호출에 의해 null 반환
+}
+
+fun main() {
+    printHashCode(null) // T의 타입은 Any?로 추론된다.
+    // null
+}
+```
+- T에 대해 추론한 타입은 널이 될 수 있는 Any? 타입이다.
+- **cf.** println() 함수는 널 허용 객체를 인자로 받았을 때, 그 객체가 실제로 null이면 콘솔에 문자열 "null"을 출력
+
+```kotlin
+fun <T: Any> printHashCode(t: T) { // T는 널이 될 수 없는 타입
+}
+
+fun main() {
+    printHashCode(null) // 컴파일 에러
+    printHashCode(42)
+    // 42
+}
+```
+- 타입 파라미터가 널이 아님을 확실히 하려면 널이 될 수 없는 타입 상계(upper bound)를 지정해야 한다.
 
 <br>
 
