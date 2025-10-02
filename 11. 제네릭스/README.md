@@ -76,9 +76,26 @@ fun <T> ensureTrailingPeriod(seq: T)
 ```
 - 여러 개의 제약을 가해야 하는 경우
 
-#### 타입 파라미터를 널이 될 수 없는 타입으로 명시하기
+#### 타입 파라미터를 널이 될 수 없는 타입으로 명시
 
-479페이지
+```kotlin
+class Processor<T : Any> {
+    fun process(value: T) {
+        value.hashCode()
+    }
+}
+```
+- 아무런 상계를 정하지 않은 타입 파라미터는 `T: Any?`와 같다.
+- 널이 될 수 없는 타입을 사용해 상계를 정하면 타입 파라미터를 널이 아닌 타입으로 제약할 수 있다.
+    - 필요하다면 `Int?`처럼 널이 될 수 있는 타입으로 상계를 정하되, 내부 널 처리 필요
+
+```kotlin
+class KBox<T>: JBox<T> {
+    override fun put(t: T & Any) { /*...*/ }
+    override fun putNotNull(t: T) { /*...*/ }
+}
+```
+- 자바와의 상호운용을 위해서는 제네릭 파라미터를 정의한 최초 위치가 아니라 타입을 사용하는 지점에서 널이 될 수 없음을 표시한다. `t: T & Any`와 같이 다른 언어에서의 교집합 타입같은 형태.
 
 <br>
 
@@ -86,7 +103,115 @@ fun <T> ensureTrailingPeriod(seq: T)
 
 ## 11.2 실행 시점에서 제네릭스의 동작
 
-> 타입 소거와 실체화된 타입 파라미터
+- JVM의 제네릭스는 **타입 소거**를 통해 구현된다. 런타임에는 제네릭 클래스의 인스턴스에 타입 정보가 들어있지 않다.
+
+## 타입 소거
+
+```kotlin
+fun readNumbersOrWords(): List<Any> {
+    val input = readln()
+    val words: List<String> = input.split(",")
+    val numbers: List<Int> = words.mapNotNull { it.toIntOrNull() }
+
+    // numbers가 비어있으면 words 반환, 아니면 numbers 반환
+    return if (numbers.isNotEmpty()) numbers else words
+}
+
+fun printList(list: List<Any>) {
+    when (list) {
+        is List<String> -> println("Strings: $list")
+        is List<Int> -> println("Integers: $list")
+        // Error: Cannot check for an instance of erased type
+    }
+}
+
+fun main() {
+    val list = readNumbersOrWords()
+    printList(list)
+}
+```
+- 저장해야 하는 타입 정보의 크기가 줄어 메모리를 덜 쓴다.
+- 그러나 위와 같이 실행 시점에 들어오는 타입에 따른 동작을 구현할 수 없다.
+
+<br>
+
+```kotlin
+fun printSum(c: Collection<*>) {
+    // 여기서 경고: Unchecked cast: List<*> to List<Int>
+    val intList = c as? List<Int> ?: throw IllegalArgumentException("List<Int> 필요")
+    println(intList.sum())
+}
+```
+- **인자를 알 수 없는 제네릭 타입을 표현할 때**는 스타 프로젝션 `*`을 쓴다. (자바 `?`와 유사)
+- 원소에 담긴 것이 무엇인지 모르지만 제네릭 타입을 사용하는 자료구조가 컬렉션임을 알 수 있다.
+- 어느 타입이 들어와도 요소로 받기 때문에 `as`를 통한 캐스팅이 언제나 성공한다.
+    - 컴파일러가 타입에 대해 알지 못하기 때문에 경고는 띄워주지만, 컴파일은 성공한다.
+- 위 코드같은 경우 리스트 내 원소를 다룰 때 `sum()`이 숫자 객체로 다루려고 하여, `String`같은 타입이 들어올 경우에는 `ClassCastException`이 발생한다.
+
+## 실체화된 타입 파라미터
+
+- 코틀린은 함수를 인라인으로 선언하여 타입 인자가 지워지지 않게할 수 있다. 즉 **타입 파라미터를 실체화**할 수 있다.
+- 이에 따라 타입 인자를 실행 시점에 언급할 수 있다.
+
+### cf. 인라인 함수란?
+
+```kotlin
+inline fun greet() = println("Hello!")
+
+fun main() {
+    greet() // -> println("Hello!")
+}
+```
+- `inline` 키워드를 붙여 선언한다.
+- 컴파일러가 함수 호출식을 그 함수의 구현 코드로 바꾼다.
+- **호출 오버헤드가 사라진다**는 장점이 있다.
+
+```kotlin
+inline fun repeatTwice(action: () -> Unit) {
+    action()
+    action()
+}
+
+fun main() {
+    repeatTwice { println("Hi") }
+}
+```
+- **람다를 인자로 넘기는 함수에서 익명 클래스와 객체가 생성되지 않아** 특히 더 성능이 좋다.
+- 인라인이 아니라면 내부적으로 익명 클래스를 정의하고, 함수(람다로 전달된)를 담는 객체가 생성이 되지만 인라인이라면 그냥 함수 실행 코드이기 때문
+
+<br>
+
+인라인 함수의 또 다른 장점 하나가 바로 타입 인자 실체화이다.
+
+```kotlin
+fun <T> isA(value: Any) = value is T
+// error
+```
+- 위 코드는 에러가 발생한다.
+
+```kotlin
+inline fun <reified T> isA(value: Any) = value is T
+```
+- 그러나 위와 같이 인라인 함수로 정의하고, `<reified T>`로 타입 인자가 실체화되었음을 나타내면 실행 시점에도 타입이 지워지지 않아 **타입 검사**가 가능하다.
+    - reified: 실체화된, 구체화된
+- 표준 라이브러리에서 이게 사용된 대표적인 예시가 `fileterIsInstance`
+
+### 동작 원리
+
+- 컴파일러는 인라인 함수 본문을 구현한 바이트코드를 그 함수가 호출되는 모든 지점에 삽입한다.
+- 이때 컴파일러는 타입 정보를 가지고 있으므로, 타입 인자로 쓰인 구체적인 클래스를 참조하는 바이트 코드를 생성해 삽입할 수 있다.
+- **cf.** 자바에서는 인라이닝이 불가해 코틀린의 인라인 함수를 일반 함수처럼 호출한다. 실체화된 타입 파라미터와 함께 쓸 경우는 오류 발생할 수 있음.
+
+> 이처럼 **실체화된 타입 파라미터**가 필요하거나, **성능 향상**이 필요한 경우에만 인라인 함수를 사용할 것. 또한 함수가 너무 커지지 않게 실체화 타입에 의존하지 않는 부분은 뽑아내자
+
+### 제약
+
+- 실체화된 타입 파라미터가 할 수 있는 일
+
+    - 타입 검사와 캐스팅 (`is, !is, as, as?)
+    - 코틀린 리플렉션 API(`::class`)
+    - 코틀린 타입에 대응하는 java.lang.Class 얻기(`::class.java`)
+    - 다른 함수를 호출할 때 타입 인자로 사용
 
 <br>
 
@@ -94,5 +219,196 @@ fun <T> ensureTrailingPeriod(seq: T)
 
 ## 11.3 변성(Variance)
 
-- 선언 지점과 사용 지점 변성
-- 타입 별명
+- 변성은 기저 타입이 같고 타입 인자가 다른 여러 타입이 서로 어떤 관계가 있는지 설명하는 개념이다.
+
+    - **e.g.** `List<String>`과 `List<Any>`
+
+> 기저 타입이란 제네릭 클래스/인터페이스에서 유효한 개념으로, 제네릭 타입에서 타입 인자를 제거했을 때 남는 "틀"
+
+### 중요한 이유
+
+#### 인자를 함수에 넘겨도 안전한지 판단하게 해준다
+
+```kotlin
+fun addAnswer(list: MutableList<Any>) {
+    list.add(42)
+}
+
+fun main() {
+    val strings = mutableListOf("ab", "bc")
+    addAnswer(strings)
+    println(strings.maxBy { it.length })
+}
+```
+- 이 식이 컴파일이 된다면, 실행 시점에 ClassCastException이 발생할 것이다.
+- 즉, `List<Any>` 타입의 파라미터를 받는 함수에 `List<String>`을 넘기면 안전하지 않다. 위처럼 원소 추가와 같이 변경이 일어날 수 있기 때문이다.
+
+- 그러나 리스트의 변경이 없는 경우에는 안전하다.
+- 따라서 읽기 전용 리스트를 받는다면, 위와 같이 더 구체적인 타입의 원소를 갖는 리스트를 함수에 넘길 수 있다.
+
+<br>
+
+이렇게 읽기만 가능한 기저 타입은 하위 타입을 넘겨도 안전하고, 쓰기도 가능한 기저 타입은 예외가 발생할 수 있어 막는 요런 정의하는 것이 **변성**의 개념이다. 변성은 코드에서 위험할 여지가 있는 메서드를 호출할 수 없게 만들어, 제네릭 타입의 인스턴스 역할을 하는 클래스 인스턴스를 잘못 사용하는 일이 없게 방지한다.
+
+### 변성을 표시하는 방법
+
+변성을 일반화하기 전, 타입과 하위 타입이라는 개념을 알아야 한다.
+
+#### cf. 타입과 하위 타입, 클래스
+
+- 타입과 클래스의 차이
+
+    - 클래스는 객체를 만들기 위한 설계도, 타입은 변수에 담길 수 있는 값들의 집합.
+    - 클래스는 하나지만 그로부터 여러 타입이 파생될 수 있다. (널 가능성, 기저 타입 등)
+
+- 타입과 하위 타입
+
+    - 어떤 타입 A의 값이 필요한 모든 장소에 어떤 타입 B의 값을 넣어도 아무런 문제가 없다면 타입 B는 타입 A의 하위 타입이다.
+
+    - 컴파일러는 변수 대입이나 함수 인자 전달 시 하위 타입 검사를 매번 수행한다.
+
+- 대부분 하위 타입은 하위 클래스와 근본적으로 같다.
+
+- 널이 될 수 없는 타입은 널이 될 수 있는 타입의 하위 클래스가 아니지만, 하위 타입이다.
+
+- 제네릭 타입에서는
+
+    - **무공변**: 서로 다른 두 타입 A, B에 대해 MutableList<A>가 항상 MutableList<B>의 하위 타입도 아니고 상위 타입도 아닌 경우
+
+    - **공변**: A가 B의 하위 타입이면 List<A>가 항상 List<B>의 하위 타입인 경우
+
+> 하위 클래스는 상속의 개념, 하위 타입은 클래스 상속뿐 아니라 인터페이스 구현, 공변/반공변 규칙 등을 다 포함하는 더 넓은 개념.
+
+#### 공변성은 하위 타입 관계를 유지한다
+
+```kotlin
+interface Producer<out T> {
+    fun produce(): T
+}
+```
+- 제네릭 클래스가 타입 파라미터에 대해 공변적임을 표시하려면 타입 파라미터 이름 앞에 `out`을 넣는다.
+- 공변성을 표시해주지 않으면, 아무리 하위 타입이 들어와도 `Producer<A>`와 `Producer<B>`는 하위 타입의 관계가 아니다. 따라서 타입 에러가 발생한다.
+
+```kotlin
+class Herd<out T : Animal> {
+    val size: Int get() = /* ... */
+    operator fun get(i: Int): T { /* ... */ }
+}
+```
+- 그렇다고 모든 클래스를 공변적으로 만들 수는 없다. 공변적으로 선언할 경우, 컴파일러는 타입 파라미터가 쓰이는 위치를 제한한다.
+- 타입 안전성을 보장하기 위해, 공변적 파라미터는 항상 **아웃** 위치에 있어야 한다. 클래스가 T 타입의 값을 생산할 수는 있지만, 소비할 수는 없다.
+
+    - 인: 함수의 파라미터 (소비)
+    - 아웃: 함수의 반환 값 (생산)
+    - 생성자 파라미터는 둘 중 어느쪽도 아니라, 사용 가능
+
+#### 반공변성은 하위 타입 관계를 뒤집는다
+
+- **반공변**: A가 B의 하위 타입이면 List<B>가 List<A>의 하위 타입인 경우
+
+```kotlin
+interface Comparator<in T> {
+    fun compare(e1: T, e2: T): Int { /*...*/ }
+}
+```
+- `in` 키워드를 사용한다.
+- 타입 파라미터가 인 위치에서만 쓰인다. 즉 타입의 값을 소비하기만 한다.
+
+```kotlin
+open class Fruit
+class Apple : Fruit()
+class Pear : Fruit()
+
+interface Consumer<in T> {
+    fun consume(item: T)
+}
+// Consumer<Fruit>은 Consumer<Apple>의 하위 타입이 된다.
+// 사과만 먹을 수 있는 소비자보다, 과일을 먹을 수 있는 소비자가 더 범용적이고 안전하기 때문!
+```
+- **하위 타입 관계**를 뒤집는다.
+- 타입의 값을 소비할 때 사용하므로, 특정 타입보다 더 일반적인 타입에 대해 소비할 수 있는 함수를 만드는 게 안전하기 때문이다.
+
+#### 선언 지점 변성과 사용 지점 변성
+
+- 자바의 와일드카드 타입과 같이 타입 파라미터가 있는 타입을 사용할 때마다 그걸 상위 타입이나 하위 타입 중 어떤 타입으로 대치할 수 있는지 명시하는 방법을 **사용 지점 변성**이라고 한다.
+
+- 클래스를 선언하면서 변성을 지정하면 그 클래스를 사용하는 모든 곳에 영향을 끼칠 수 있다. 이런 방식을 **선언 지점 변성**이라 한다.
+
+    - 쓰는 쪽에서 코드가 간결해진다.
+
+<br>
+
+- 코틀린에서도 사용 지점 변성을 쓸 수 있다.
+- 타입을 소비하는 동시에 생산할 수 있는 인터페이스/클래스가 존재하는데, 특히 어떤 함수 안에서는 생산자 또는 소비자 중 하나의 역할만 담당할 때 사용할 수 있다.
+
+```kotlin
+fun <T> copyData(source: MutableList<T>, destination: MutableList<T>) {
+    for (item in source) {
+        destination.add(item)
+    }
+}
+```
+- 여기서 원본 컬렉션은 읽기만, 대상 컬렉션은 쓰기만 한다는 사실이 보인다.
+
+```kotlin
+fun <T> copyData(source: MutableList<out T>, destination: MutableList<T>) {
+    for (item in source) {
+        destination.add(item)
+    }
+}
+```
+- 위와 같이 MutableList라는 클래스를, 사용 시점에 `out`을 통해 공변성을 지정할 수 있다!
+- `in`도 넣으면 상위 타입까지 커버하니, 좀 더 안전하게 사용할 수 있음.
+- 이런 변경자를 붙이면, **타입 프로젝션**이 일어나 컴파일러가 타입 파라미터 T를
+in 또는 out 위치(붙인 변경자에 따라)에서 사용하지 못하게 막는다.
+
+#### 스타 프로젝션 `*`을 사용할 때 주의할 점
+
+*는 제네릭 타입 인자 정보가 없음을 표현할 때 사용한다.
+타입 파라미터를 시그니처에서 언급하지 않거나 데이터를 읽기는 하지만 타입은 무관할 때 쓴다.
+
+> 모른다고 아무거나 다 담아도 된다는 뜻이 아니다!
+
+1. **타입 인자를 알 수 없으므로 구체적인 타입으로는 사용 불가**
+
+- `MutableList<*>`는 `MutableList<Any?>`와 같지 않다.
+
+    - 후자는 모든 타입의 원소를 담을 수 있음을, 프로젝션은 어떤 정해진 구체적인 타입만을 담을 수 있지만 그 원소의 타입을 정확히 모름을 표현한다.
+
+- 예를 들어, 컴파일러 입장에서는 validate(input: T)에서 T가 뭔지 모르니까, String이든 Int든 아무 것도 안전하게 넣을 수 없다. 그래서 FieldValidator<*> 타입 변수에서는 validate("문자열") 같은 호출이 막힌다.
+
+2. **읽기는 가능하지만, 쓰기는 안전하지 않음**
+
+- `MutableList<*>`에서 원소를 꺼낼 때는 `Any?`로 받을 수 있다.
+
+- 하지만 원소를 추가하려 하면 컴파일 에러가 발생한다. 어떤 타입인지 알 수 없으니 안전하지 않기 때문.
+
+3. **캐스팅이 필요할 때가 있음 (unsafe cast)**
+
+- 특정 타입 전용 동작을 하려면 `as FieldValidator<String>` 같은 캐스팅을 해야 한다.
+
+- 이 경우 컴파일러는 경고(unchecked cast)를 주고, 잘못 캐스팅하면 런타임에 ClassCastException이 터질 수 있다. (7장에서 언급했듯)
+
+4. **맵/컨테이너에 섞어 담을 때 특히 위험**
+
+- `mutableMapOf<KClass<*>, FieldValidator<*>>()`처럼 여러 타입의 밸리데이터를 한 곳에 모아두면, 꺼낼 때마다 타입 정보가 지워져 있어서 캐스팅이 필요해진다.
+- 따라서 잘못된 캐스팅으로 인한 런타임 오류 가능성이 있다.
+
+#### 타입 별명
+
+- 여러 제네릭 타입을 조합한 타입(복잡한 제네릭 타입, 함수형 타입 등)을 다룰 때, **기존 타입에 다른 이름을 부여**해 편리하게 사용할 수 있다.
+
+```kotlin
+typealias NameCombiner = (String, String, String, String) -> String
+
+val authorsCombiner: NameCombiner = { a, b, c, d -> "$a et al." }
+val bandCombiner: NameCombiner = { a, b, c, d -> "$a, $b & The Gang" }
+
+fun combineAuthors(combiner: NameCombiner) {
+    println(combiner("aaa","bbb","ccc","ddd"))
+}
+```
+- `typealias` 키워드 뒤에 별명을 적어 선언한다.
+- 이는 단지 원래의 타입으로 치환될 뿐 타입 안전성을 추가하지는 못한다. 타입 안전성이 필요하다면 인라인 클래스를 사용하여 타입을 검사하라!
+
+> 새로운 개발자가 코드를 읽을 때 정의를 찾아 이해하는 데 시간이 소비될 수 있다는 트레이드 오프 등을 생각하고 쓰면 될 것~
