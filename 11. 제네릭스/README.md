@@ -299,15 +299,16 @@ class Herd<out T : Animal> {
 
 - **반공변**: A가 B의 하위 타입이면 List<B>가 List<A>의 하위 타입인 경우
 
-```kotlin
+```java
 interface Comparator<in T> {
     fun compare(e1: T, e2: T): Int { /*...*/ }
 }
 ```
+
 - `in` 키워드를 사용한다.
 - 타입 파라미터가 인 위치에서만 쓰인다. 즉 타입의 값을 소비하기만 한다.
 
-```kotlin
+```java
 open class Fruit
 class Apple : Fruit()
 class Pear : Fruit()
@@ -343,7 +344,7 @@ fun <T> copyData(source: MutableList<T>, destination: MutableList<T>) {
 ```
 - 여기서 원본 컬렉션은 읽기만, 대상 컬렉션은 쓰기만 한다는 사실이 보인다.
 
-```kotlin
+```java
 fun <T> copyData(source: MutableList<out T>, destination: MutableList<T>) {
     for (item in source) {
         destination.add(item)
