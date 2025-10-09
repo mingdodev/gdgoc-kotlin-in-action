@@ -211,16 +211,205 @@ class TD : Tag
 
 invoke 관례를 사용하면 어떤 커스텀 타입의 객체를 함수처럼 호출할 수 있다.
 
+```kotlin
+class Greeter(val greeting: String) {
+    operator fun invoke(name: String) {
+        println("$greeting, $name!")
+    }
+}
+
+fun main() {
+    val myGreeter = Greeter("Hello")
+    myGreeter("Cat")
+    // Hello, Cat!
+}
+```
+- `Greeter` 인스턴스인 `myGreeter`를 함수처럼 호출할 수 있다. 내부적으로는 `myGreeter.invoke("Cat")`으로 컴파일된다.
+
+> 관례란 특별한 이름의 함수를 일반 함수처럼 이름으로 호출하지 않고 다른 간결한 표기를 사용해 호출하는 것을 말한다. 예를 들어 `get` 함수 정의는 `foo.get(bar)`를 `foo[bar]`로 쓸 수 있게 만든다.
+
+```kotlin
+// 인자를 2개 받는 함수를 표한하는 함수형 인터페이스
+interface Funcion2<in P1, in P2, out R> {
+    operator fun invoke(p1: P1, p2: P2)
+}
+```
+- 일반적인 람다 호출(`lambda()`)이 실제로는 이 관레를 적용한 것
+- 람다를 함수처럼 호출하면 `invoke` 메서드 호출로 변환된다.
+
+#### Gradle 의존관계 선언에서의 invoke 관례
+
+```kotlin
+class DependencyHandler { // 일반적인 명령형 API
+    fun implementation(coordinate: String) {
+        println("Added dependency on $coordinate")
+    }
+
+    operator fun invoke( // DSL 스타일 API
+        body: Dependencyhandler.() -> Uint) {
+            body()
+        }
+}
+
+fun main() {
+    val dependencies = DependencyHandler()
+
+    // 의존성이 하나일 때 간결함
+    dependencies.implementaton("...")
+
+    // 여러 개일 때
+    dependencies {
+        implementaton("..."),
+        ...
+    }
+}
+```
+- 두 번째 메서드는 관례를 활용한 DSL 스타일 API이다. `dependencies`를 함수처럼 호출하면서 람다를 인자로 넘긴다.
+
+
+이렇게 재정의한 invoke 메서드로 인해 DSL API의 **유연성**이 훨씬 커진다. 이런 패턴은 일반적으로 적용할 수 있는 패턴이니 필요한 경우 기존 코드를 크게 변경하지 않고도 사용할 수 있다!
+
 <br>
 
 ---
 
 ## 13.3 실용적인 DSL 구성 예제
 
-### 테스팅
+### 중위 호출로 간결하게 메서드를 호출하는 Kotest
 
-### 날짜 리터럴
+```kotlin
+import io.kotest.matchers.should
+import io.kotest.matchers.string.startWith
+import org.junit.jupiter.api.Test
 
-### 데이터베이스 질의
+class PrefixTest {
+    @Test
+    fun testKPrefix() {
+        val s = "kotlin".uppercase()
+        s should startWith("K")
+    }
+}
+```
+- `should` 함수를 중위 호출하여 단언문 코드를 거의 일반 영어처럼 읽을 수 있게 된다.
 
-612p
+```kotlin
+infix fun <T> should(matcher: Matcher<T>) = matcher.test(this)
+
+...
+
+interface Matcher<T> {
+    fun test(value: T)
+}
+
+fun startWith(prefix: String): Matcher<String> {
+    return object : Matcher<String> {
+        override fun test(value: String) {
+            if(!value.startsWith(prefix)) {
+                throw AssertionError("$value does not start with $prefix")
+            }
+        }
+    }
+}
+```
+- `Matcher`는 값에 대한 단언문을 표현하는 제네릭 인터페이스이다.
+- 라이브러리에서 다양한 단언을 할 수 있는 `Matcher`를 제공하고 있다. 따라서 간결하게 코드를 작성할 수 있다.
+- 라이브러리로 표현할 수 없는 복잡한 비즈니스 로직이 있다면 커스텀 코테스트 매처를 만들어 보는 것도 굳~
+
+> 복습: 함수형 인터페이스의 조건은 SAM이다. 자바는 `@FunctionalInterface`으로 컴파일러에게 이를 명시하는 걸 권장한다. 반면 코틀린은 SAM일 때 정의상 함수형 인터페이스라고 말할 수 있지만, 이를 람다로 구현하려면 `fun interface`라고 명시적으로 지정해주어야 한다.
+
+### kotlinx.datetime 라이브러리의 날짜 리터럴
+
+```kotlin
+val now = Clock.System.now()
+val yesterday = now - 1.days
+val later = now + 5.hours
+```
+- `Int` 타입의 확장 프로퍼티 `days, hours`
+- 두 시점 사이 시간 간격을 표현하는 `Duration` 타입을 반환한다.
+
+### Exposed: 멤버 확장을 사용한 데이터베이스 질의 DSL
+
+```kotlin
+object Country : Table() {
+    val id = integer("id").autoIncrement()
+    val name = varchar("name", 50)
+    override val primaryKey = PrimaryKey(id)
+}
+```
+- Exposed 프레임워크에서 SQL로 테이블을 다루려면 Table 클래스를 확장해 정의한다.
+
+```kotlin
+fun main() {
+    val db = Database.connect("jdbc:h2:mem:test", driver = "org.h2.Driver")
+    transaction(db) {
+        SchemaUtils.create(Country)
+    }
+}
+```
+- 테이블을 만들려면 트랜잭션과 함께 스키마 유틸 메서드를 호출한다. 이 코드는 SQL문을 만들어낸다.
+
+<br>
+
+```kotlin
+class Table {
+    fun integer(name: String): Column<Int>
+    fun varchar(name: String, length: Int): Column<String>
+    // ...
+}
+```
+- 테이블 클래스는 데이터베이스 테이블에 대해 정의할 수 있는 모든 타입을 정의한다.
+
+```kotlin
+val id = integer("id").autoIncrement().primaryKey()
+```
+- 각 칼럼의 속성을 지정할 때, 멤버 확장이 쓰인다.
+- Column에 대해 autoIncrement 같은 메서드를 호출해 속성을 지정할 수 있다. **각 메서드는 자신의 수신 객체를 다시 반환**하기 때문에, **메서드를 연쇄 호출**할 수 있다.
+
+```kotlin
+class Table {
+    fun Column<Int>.autoIncrement(): Column<Int>
+    ...
+}
+```
+- 위 함수는 테이블 클래스의 멤버이기는 하지만 여전히 Column의 확장 함수이기도 하다.
+- 이것이 이런 메서드를 멤버 확장으로 정의해야 하는 이유를 보여준다. 메서드가 적용되는 범위를 제한해야 하기 때문이다. 테이블이라는 맥락이 없으면 컬럼의 프로퍼티를 정의해도 아무 의미가 없다.
+- 또한 수신 객체 타입을 제한할 수 있다. 테이블 안의 어떤 컬럼이든 기본 키가 될 수 있지만 자동 증가 컬럼이 될 수 있는 건 정수 타입인 컬럼뿐이다.
+
+<br>
+
+**cf.** 근데 실제로는 주석으로만 제한되어 있음. 데이터베이스 논리까지 컴파일러가 잡아주지 않음
+
+```kotlin
+/**
+     * Make @receiver column an auto-increment column to generate its values in a database.
+     * **Note:** Only integer and long columns are supported (signed and unsigned types).
+     * Some databases, like PostgreSQL, support auto-increment via sequences.
+     * In this case a name should be provided using the [idSeqName] param and Exposed will create a sequence.
+     * If a sequence already exists in the database just use its name in [idSeqName].
+     *
+     * @param idSeqName an optional parameter to provide a sequence name
+     */
+    fun <N : Any> Column<N>.autoIncrement(idSeqName: String? = null): Column<N> =
+        cloneWithAutoInc(idSeqName).also { replaceColumn(this, it) }
+```
+- **Note:** Only integer and long columns are supported (signed and unsigned types).
+
+<br>
+
+```kotlin
+object User : Table() {
+    val id = integer("id").autoIncrement()
+    val nickname = varchar("nickname", 20).autoIncrement()
+}
+```
+- 이 코드에도 아무런 경고 안 뜸. 두 번째 라인은 결국 SQL 수준에서 실패하지 않나
+- 유연함을 위해 이렇게 설계했다는데, 아직 약간 와닿지는 않음
+- 데이터베이스 같은 외부 논리를 컴파일러가 모를 수밖에 없지~라기에는 얘는 도메인 특화 언어 아닌가요?!
+
+> **gemini의 첨언**  
+> Exposed는 내부 DSL이다. 내부 DSL은 코틀린 언어의 문법적 제약(컴파일러의 타입 검사) 안에서 작동하기에, 외부 DSL처럼 SQL 규칙 전체를 완벽하게 통합하기 어렵다. SQL 규칙은 **의미론적 제약**이기 때문!  
+> 유연성을 준 이유는, Column<Int>와 Column<Long>처럼 여러 숫자 타입을 모두 처리하는 코드를 한 번만 작성하고 싶었기 때문. 이 유연성은 라이브러리 작성자의 생산성을 높임.
+
+<br>
+
+**DSL을 사용할 때는 외부 도메인이 가진 자체적인 논리에 더 신경을 써야겠네요~! 그것이 개발자의 책임. 테스트를 꼼꼼히 하는 것도 좋은 방법이겠죠?**
