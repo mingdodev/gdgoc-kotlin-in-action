@@ -275,7 +275,7 @@ fun main() {
 
 ## 13.3 실용적인 DSL 구성 예제
 
-### 중위 호출로 간결하게 메서드를 호출하는 Kotest
+### 13.3.1 Kotest: 중위 호출로 간결하게 테스팅 메서드 호출
 
 ```kotlin
 import io.kotest.matchers.should
@@ -291,6 +291,8 @@ class PrefixTest {
 }
 ```
 - `should` 함수를 중위 호출하여 단언문 코드를 거의 일반 영어처럼 읽을 수 있게 된다.
+
+<br>
 
 ```kotlin
 infix fun <T> should(matcher: Matcher<T>) = matcher.test(this)
@@ -317,7 +319,9 @@ fun startWith(prefix: String): Matcher<String> {
 
 > 복습: 함수형 인터페이스의 조건은 SAM이다. 자바는 `@FunctionalInterface`으로 컴파일러에게 이를 명시하는 걸 권장한다. 반면 코틀린은 SAM일 때 정의상 함수형 인터페이스라고 말할 수 있지만, 이를 람다로 구현하려면 `fun interface`라고 명시적으로 지정해주어야 한다.
 
-### kotlinx.datetime 라이브러리의 날짜 리터럴
+<br>
+
+### 13.3.2 kotlinx.datetime 라이브러리: 날짜 리터럴
 
 ```kotlin
 val now = Clock.System.now()
@@ -327,7 +331,9 @@ val later = now + 5.hours
 - `Int` 타입의 확장 프로퍼티 `days, hours`
 - 두 시점 사이 시간 간격을 표현하는 `Duration` 타입을 반환한다.
 
-### Exposed: 멤버 확장을 사용한 데이터베이스 질의 DSL
+<br>
+
+### 13.3.3 Exposed: 멤버 확장을 사용한 데이터베이스 질의 DSL
 
 ```kotlin
 object Country : Table() {
