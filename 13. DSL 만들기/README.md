@@ -94,6 +94,119 @@ inner join Customer
 
 ### 수신 객체 지정 람다로 DSL 만들기
 
+```kotlin
+fun buildString(
+    builderAction: (StringBuilder) -> Unit
+): String {
+    val sb = StringBuilder()
+    builderAction(sb)
+    retrun sb.toString()
+}
+
+fun main() {
+    val s = buildString {
+        it.append("Hello, ")
+        it.append("World!")
+    }
+    println(s)
+    // Hello, World!
+}
+```
+- 위 코드는 함수의 파라미터로 함수 타입을 받는다. 따라서 람다 본문에서 매번 `it`을 사용해서 StringB`u`ilder 인스턴스를 참조해야 한다.
+
+> 복습: 코틀린은 람다에 매개변수가 하나만 있을 때, 그 매개변수 이름을 `it`으로 자동 지정한다.
+
+<br>
+
+아래는 **수신 객체 지정 람다**를 활용한 코드이다. 우선 수신 객체 지정 람다가 어떤 효율을 제공하는지 복습하자.
+
+```kotlin
+fun buildString(
+    builderAction: StringBuilder.() -> Unit
+): String {
+    val sb = StringBuilder()
+    sb.builderAction() // StringBuilder 인스턴스를 람다의 수신객체로 넘긴다
+    retrun sb.toString()
+}
+
+fun main() {
+    val s = buildString {
+        this.append("Hello, ")
+        append("World!")
+    }
+    println(s)
+    // Hello, World!
+}
+```
+- 위 코드 함수를 정의할 때 **수신 객체가 지정된 함수 타입의 파라미터**를 선언한다. 따라서 `StringBuilder` 인스턴스를 람다의 수신 객체로 넘길 수 있다.
+- 이에 따라 `this` 키워드로 (생략 가능) 수신 객체를 표현할 수 있게 된다.
+- 즉 `builderAction`은 `StringBuilder` 클래스 안에 정의된 메서드가 아니며, sb는 확장 함수 호출할 때와 동일한 구문으로 호출할 수 있는 함수 타입의 인자일 뿐이다.
+
+> `this`는 자바와 마찬가지로 현재 객체를 표현하거나, 확장 함수에서 수신 객체를 표현할 때 쓴다. 그러나 모호성이 해결해야 할 때만 사용하고 일반적으로는 생략.
+
+```kotlin
+String.(Int, Int) -> Unit
+// . 왼쪽: 수신 객체 타입
+// 괄호 내부: 파라미터 타입
+// 화살표 오른쪽: 반환 타입
+```
+- 확장 함수의 타입 정의는 위와 같이 이루어진다.
+
+<br>
+
+실제 표준 라이브러리의 구현은 `apply` 함수를 사용하여 더 간결하다.
+
+```kotlin
+fun buildString(builderAction: StringBuilder.() -> Unit): String =
+    StringBuilder().apply(builderAction).toString()
+```
+- `apply`는 인자로 받은 람다나 함수를 호출할 때, **자신의 수신 객체**를 **인자로 받은 람다나 함수의 암시적 수신 객체로 사용**한다.
+- **cf.** `apply`도 제공받은 수신 객체로 확장 함수 타입의 람다를 호출한다는 건 같은데, 얘는 수신 객체를 첫 번째 인자로 받고, 수신 객체가 아닌 람다 호출 결과를 반환한다. 결과를 받아서 쓸 필요가 있냐 없냐에 따라 바꿔 쓸 수 있음.
+
+> 아~~ 이제 좀 이해했다  
+> 수신 객체 지정 람다가 젤 낯설다 엉엉 이건 많이 써봐야 잘 쓸 수 있겠다
+
+<br>
+
+#### HTML 빌더(코틀린 DSL) 안에서 수신 객체 지정 람다 사용
+
+- HTML 빌더: HTML을 만들기 위한 코틀린 DSL. 타입 안전성을 보장한다.
+
+> cf. 빌더는 객체 계층 구조를 선언적으로 정의할 수 있다. UI 컴포넌트 레이아웃 정의할 때 유용.
+
+```kotlin
+fun createSimpleTable() = createHTML().
+    table {
+        tr {
+            td { +"cell" }
+        }
+    }
+```
+- 각 함수는 고차함수로, 수신 객체 지정 람다를 인자로 받는다.
+- table 함수에 넘겨진 람다에서는 tr 함수를 사용해 `<tr>` HTML 태그를 만든다. 그러나 이 람다 밖에서는 tr이라는 함수를 찾을 수 없다. 나머지 함수들도 각자의 상위 구조에서만 접근 가능. **(문법, 구조)** 이러한 API 설계로 인해 HTML 언어의 문법을 따르는 코드만 작성할 수 있게 된다. **(도메인 특화)**
+
+```kotlin
+open class Tag
+
+// 대문자 -> 유틸리티 클래스. 메서드들은 해당 타입을 수신 객체로 받는 람다를 인자로 받는다.
+
+class TABLE : Tag {
+    fun tr(init: TR.() -> Unit)
+}
+
+class TR : Tag {
+    fun td(init: TD.() -> Unit)
+}
+
+class TD : Tag
+```
+- 각 블록의 이름 결정 규칙은 각 람다의 수신 객체에 의해 결정된다.
+- 내포된 람다에서 외부 람다의 수신 객체를 참조한다면 헷갈릴 수 있다. 이를 막기 위해 `@DsllMarker` 어노테이션이 제공된다.
+
+<br>
+
+- DSL을 정적 타입 언어와 함께 사용하면 **추상화**된 구조를 만들어 도메인 규칙을 지키도록 만들 수 있으며, 반복되는 코드 조각을 새 함수로 묶어 **재사용**할 수 있다.
+
 ### invoke 관례로 DSL 만들기
 
 invoke 관례를 사용하면 어떤 커스텀 타입의 객체를 함수처럼 호출할 수 있다.
